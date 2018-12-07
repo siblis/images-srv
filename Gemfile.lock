@@ -1,0 +1,45 @@
+GIT
+  remote: https://github.com/sinatra/sinatra.git
+  revision: ba63ae84bd52174af03d3933863007ca8a37ac1c
+  specs:
+    rack-protection (2.0.4)
+      rack
+    sinatra (2.0.4)
+      mustermann (~> 1.0)
+      rack (~> 2.0)
+      rack-protection (= 2.0.4)
+      tilt (~> 2.0)
+    sinatra-contrib (2.0.4)
+      backports (>= 2.8.2)
+      multi_json
+      mustermann (~> 1.0)
+      rack-protection (= 2.0.4)
+      sinatra (= 2.0.4)
+      tilt (>= 1.3, < 3)
+
+GEM
+  remote: http://rubygems.org/
+  specs:
+    backports (3.11.4)
+    dotenv (2.5.0)
+    faraday (0.15.4)
+      multipart-post (>= 1.2, < 3)
+    multi_json (1.13.1)
+    multipart-post (2.0.0)
+    mustermann (1.0.3)
+    puma (3.12.0)
+    rack (2.0.6)
+    tilt (2.0.9)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  dotenv
+  faraday
+  puma
+  sinatra!
+  sinatra-contrib!
+
+BUNDLED WITH
+   1.17.1
