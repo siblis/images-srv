@@ -4,15 +4,16 @@ require 'bundler/setup' # If you're using bundler, you will need to add this
 require 'dotenv/load'
 require 'sinatra'
 require 'sinatra/json'
+require 'slim'
 require 'fileutils'
 require 'faraday'
-#
+require 'mini_magick'
 require_relative 'config/app'
-#
-# include FileUtils::Verbose
+IMAGES_MASK = '*.{bmp,gif,jpeg,jpg,png,tif,tiff}'.freeze
+IMAGES_REGEX = /.(bmp|gif|jpg|png|tif|tiff)$/.freeze
 
 # проверка аутентификации (авторизации)
-before do 
+before do
   auth!
 end
 
@@ -23,41 +24,88 @@ end
 
 # вывести весь список картинок
 get '/images' do
-  images_list = Dir.glob(settings.images_dir + '/**/*.{png,jpg,jpeg,gif,svg}').map { |f| f.gsub(settings.public_dir, '') }
-  images_sub = settings.images_dir.gsub(settings.public_dir, '') + '/'
-  images = images_list.map do |image_path|
-    arr = image_path.gsub(images_sub, '').split('/')
-    {
-      resource: arr.size >=2 && arr[0].is_a?(String) && settings.resources.include?(arr[0]) ? arr[0] : nil,
-      resource_id: arr.size >= 3 && arr[1].to_i > 0 ? arr[1].to_i : nil,
-      image_path: image_path
-    }
+  images = []
+  Dir["#{settings.images_dir}/*/"].map do |resource_dir|
+    resource = resource_dir.split('/').last
+    next unless settings.resources.include?(resource)
+
+    Dir["#{resource_dir}/*/"].map do |id_dir|
+      id = id_dir.split('/').last.to_i
+      next unless id > 0
+
+      sizes = Dir["#{id_dir}/*/"].map { |d| d.split('/').last }.select { |d| d.match(/^\d+x\d+$/) }
+      files = Dir["#{id_dir}/#{IMAGES_MASK}"].map { |d| d.split('/').last }
+      files.each do |file|
+        images << {
+          resource: resource,
+          resource_id: id,
+          sizes: sizes.select { |size| File.file? "#{id_dir}/#{size}/#{file}" },
+          image_path: "#{settings.images_sub}/#{resource}/#{id}/#{file}"
+        }
+      end
+    end
   end
-  json images
+  json(images.sort_by { |image| image[:image_path] })
 end
 
-# простенькая форма загрузки
-get '/images/:resource/:id/upload' do
-  erb :upload, locals: { action: "/images/#{params[:resource]}/#{params[:id]}/upload" }
+# простенькая форма загрузки картинок
+get '/images/:resource/:id' do
+  if settings.resources.include?(params[:resource]) && params[:id].to_i > 0
+    images_dir = File.join(settings.images_dir, "/#{params[:resource]}/#{params[:id]}")
+    images_path = images_dir.gsub(settings.public_dir, '')
+    images = Dir["#{images_dir}/**/#{IMAGES_MASK}"].map { |f| f.gsub("#{images_dir}/", '') }.sort
+  end
+  slim :upload, locals: { images_path: images_path, images: images }
 end
 
 # обработка загрузки
 post '/images/:resource/:id/upload' do
   if params[:file]
-    tempfile = params[:file][:tempfile] 
-    filename = params[:file][:filename] 
-    target_dir = File.join(settings.images_dir, "/#{params[:resource]}/#{params[:id]}") if settings.resources.include?(params[:resource])
-    FileUtils.mkdir_p(target_dir) unless File.exists?(target_dir)
-    target_file = File.join(target_dir, "/#{filename}")
-    FileUtils.cp(tempfile.path, target_file)
-    File.chmod(0644, target_file) # чтоб можно было выдавать картинки через nginx
-    json message: 'Готово!'
+    tempfile = params[:file][:tempfile]
+    filename = params[:file][:filename]
+    if settings.resources.include?(params[:resource])
+      target_dir = File.join(settings.images_dir, "/#{params[:resource]}/#{params[:id]}")
+    end
+    if target_dir
+      FileUtils.mkdir_p(target_dir) unless File.exist?(target_dir)
+      target_file = File.join(target_dir, "/#{filename}")
+      FileUtils.cp(tempfile.path, target_file)
+      File.chmod(0o644, target_file) # чтоб раздавать картинки через nginx
+      # \/ crop & resize images
+      settings.images_sizes.split(',').each do |image_size|
+        processed_dir = File.join(target_dir, "/#{image_size}")
+        processed_file = File.join(processed_dir, "/#{filename}")
+        FileUtils.mkdir_p(processed_dir) unless File.exist?(processed_dir)
+
+        image = MiniMagick::Image.open(tempfile.path)
+        # crop
+        offsets = params[:offsets].scan(/[+-]\d+[+-]\d+/) if params[:offsets]
+        offsets.each { |offset| image.crop offset }
+        # resize
+        image.combine_options do |opt|
+          opt.resize "#{image_size}^"
+          opt.gravity 'center'
+          opt.extent image_size
+        end
+        # save
+        image.format 'jpeg'
+        image.write processed_file.gsub(IMAGES_REGEX, '.jpeg')
+      end
+      # /\ resize & crop image
+      json message: 'Готово!'
+    else
+      json error: 'Неверный ресурс!', status: :unprocessable_entity
+    end
   else
     json error: 'Файл не выбран!', status: :unprocessable_entity
   end
 end
 
-# проверяем токен на главном бэкенде
+not_found do
+  halt 404, { error: 'Неверный запрос!' }.to_json
+end
+
+# проверить токен на главном бэкенде
 def auth!
   result = nil
   email = request.env['HTTP_X_USER_EMAIL']
@@ -70,9 +118,8 @@ def auth!
       req.headers['X-USER-TOKEN'] = token
     end
   end
-  user = JSON.parse(result.body, { symbolize_names: true })[:user] if result && result.success?
-  # logger.info '#' * 80
-  # logger.info user
-  # logger.info '#' * 80
-  halt 401, { error: 'Недействительный токен и/или отсутствуют права доступа.' }.to_json unless result && result.success? # && user[:role] == 'admin'
+  # user = JSON.parse(result.body, symbolize_names: true)[:user] if result && result.success?
+  halt 401, { error: 'Недействительный токен и/или отсутствуют права доступа!' }.to_json unless result \
+                                                                                             && result.success?
+  # && user[:role] == 'admin'
 end

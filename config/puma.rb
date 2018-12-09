@@ -1,11 +1,8 @@
 # config/puma.rb
-app_dir = "#{Dir.getwd}"
+app_dir = Dir.getwd.to_s
 
 # Run as daemon?
 run_as_daemon = ENV.fetch('DAEMON') { false }
-
-# Bind port?
-bind_port = ENV.fetch('PORT') { false }
 
 # Specifies the `environment` that Puma will run in.
 environment ENV.fetch('APP_ENV') { 'development' }
@@ -14,7 +11,7 @@ environment ENV.fetch('APP_ENV') { 'development' }
 stdout_redirect "#{app_dir}/log/puma.stdout.log", "#{app_dir}/log/puma.stderr.log", true if run_as_daemon
 
 # Specifies the `port` that Puma will listen on to receive requests; default is 3000.
-port ENV.fetch('PORT') { 3000 } if bind_port
+# port ENV.fetch('PORT') { 3333 }
 
 # Unix socket bind
 bind "unix://#{app_dir}/tmp/sockets/puma.socket"
@@ -25,7 +22,7 @@ state_path "#{app_dir}/tmp/pids/puma.state"
 
 rackup "#{app_dir}/config.ru"
 
-threads 1, 4
+threads 0, 5
 
 activate_control_app
 
