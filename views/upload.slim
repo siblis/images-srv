@@ -1,0 +1,33 @@
+h1 Загрузка картинок:
+form action="#{images_path}/upload" method='post' enctype='multipart/form-data'
+  p
+    label
+      strong Картинка: 
+      input type='file' name='file' accept='image/*'
+  p
+    label
+      strong Обрезать: 
+      input type='text' name='offsets' placeholder='+0+0-0-0'
+    p
+      | Значения отрезов указываются только парами в формате '
+      b +x-y,
+      | ' где:
+      br
+      b x
+      |  и 
+      b y
+      |  - размеры отрезов в пикселях по горизонтали и вертикали, '
+      b +
+      | ' - означает отрезать слева/сверху, '
+      b -
+      | ' - справа/снизу.
+      br
+      | Пар может быть сколько угодно или вообще не быть (чтоб обрезать с 4х сторон достаточно 2х пар).
+  p
+    input type='submit' value='Загрузить'
+
+h3 Загруженные картинки:
+ul
+  - images.each do |img|
+    li
+      a href="#{images_path}/#{img}" #{img}

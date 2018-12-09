@@ -1,0 +1,23 @@
+# /etc/systemd/system/images-srv.service
+# linux service
+[Unit]
+Description=Puma HTTP Server Accept Sockets
+After=network.target
+
+[Service]
+Type=forking
+User=images-srv
+Group=images-srv
+WorkingDirectory=/var/www/images-srv
+ExecStart=/bin/bash -ic 'bundle exec puma'
+Restart=always
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=images-srv    
+Environment=DAEMON=true
+Environment=RACK_ENV=production
+PIDFile=/var/www/images-srv/tmp/pids/puma.pid
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=sockets.target

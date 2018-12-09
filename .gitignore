@@ -20,6 +20,9 @@
 # Used by dotenv library to load environment variables.
 .env
 
+# Ignore rubocop auto-gen-config.
+.rubocop_todo.yml
+
 ## Specific to RubyMotion:
 .dat*
 .repl_history
