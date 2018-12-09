@@ -11,7 +11,7 @@ PORT=3333	# tcp/ip port binding
 BACK_HOST=http://localhost:3000	# URL бэкенда с аутентификацией
 
 PUBLIC_DIR=/var/www/public	# корневая общедоступная папка
-IMAGES_SUB=/images	# подпапка для картинок
+IMAGES_SUB=/images		# подпапка для картинок
 
 IMAGES_SIZES="500x400,400x300"	# размеры нарезанных картинок
 ```
