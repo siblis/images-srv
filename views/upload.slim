@@ -7,11 +7,11 @@ form action="#{images_path}/upload" method='post' enctype='multipart/form-data'
   p
     label
       strong Обрезать: 
-      input type='text' name='offsets' placeholder='+0+0-0-0'
+      input type='text' name='offsets' placeholder='+x+y-x-y'
     p
       | Значения отрезов указываются только парами в формате '
-      b +x-y,
-      | ' где:
+      b +x-y
+      | ', где:
       br
       b x
       |  и 

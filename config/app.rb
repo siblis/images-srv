@@ -1,7 +1,15 @@
+# frozen_string_literal: true
+
 # config/app.rb
 configure do
+  set :enviroment, ENV.fetch('RACK_ENV') { :development }
+
   enable :logging
+
   disable :sessions
+
+  disable :show_exceptions
+  disable :dump_errors
 
   # run on puma
   set :server, :puma

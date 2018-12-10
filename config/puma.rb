@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # config/puma.rb
 app_dir = Dir.getwd.to_s
 
@@ -14,11 +16,11 @@ stdout_redirect "#{app_dir}/log/puma.stdout.log", "#{app_dir}/log/puma.stderr.lo
 # port ENV.fetch('PORT') { 3333 }
 
 # Unix socket bind
-bind "unix://#{app_dir}/tmp/sockets/puma.socket"
+bind "unix://#{app_dir}/tmp/puma.socket"
 
 # Set master PID and state locations
-pidfile "#{app_dir}/tmp/pids/puma.pid"
-state_path "#{app_dir}/tmp/pids/puma.state"
+pidfile "#{app_dir}/tmp/puma.pid"
+state_path "#{app_dir}/tmp/puma.state"
 
 rackup "#{app_dir}/config.ru"
 

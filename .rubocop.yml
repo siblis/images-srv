@@ -1,17 +1,19 @@
+AllCops:
+  TargetRubyVersion: 2.5.3
+
 inherit_from: .rubocop_todo.yml
 
 Metrics/AbcSize:
-  Enabled: false
+  Max: 24
 
 Metrics/BlockLength:
-  Enabled: false
+  Max: 36
 
 Metrics/MethodLength:
-  Enabled: false
+  Max: 20
 
 Metrics/LineLength:
   Max: 120
 
 Style/AsciiComments:
   Enabled: false
-  
