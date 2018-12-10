@@ -1,7 +1,7 @@
 # /etc/nginx/conf.d/images-srv.conf
 # nginx conf file
 upstream images-srv {
-  server unix:///var/www/images-srv/tmp/sockets/puma.socket;
+  server unix:///var/www/images-srv/tmp/puma.socket;
 }
 
 server {

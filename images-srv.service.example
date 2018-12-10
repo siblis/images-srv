@@ -16,7 +16,7 @@ StandardError=syslog
 SyslogIdentifier=images-srv    
 Environment=DAEMON=true
 Environment=RACK_ENV=production
-PIDFile=/var/www/images-srv/tmp/pids/puma.pid
+PIDFile=/var/www/images-srv/tmp/puma.pid
 
 [Install]
 WantedBy=multi-user.target

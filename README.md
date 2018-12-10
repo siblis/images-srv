@@ -1,5 +1,5 @@
 # images-srv
-Image tools microservice:
+Image tools microservice.
 
 ## Настройки:
 
