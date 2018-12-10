@@ -38,19 +38,18 @@ end
 
 # вывести весь список картинок
 get '/images' do
-  images = []
-  Dir["#{settings.images_dir}/*/"].each do |resource_dir|
+  images = Dir["#{settings.images_dir}/*/"].inject([]) do |acc, resource_dir|
     resource = resource_dir.split('/').last
     next unless settings.resources.include?(resource)
 
-    Dir["#{resource_dir}/*/"].each do |id_dir|
+    acc += Dir["#{resource_dir}/*/"].inject([]) do |acc, id_dir|
       id = id_dir.split('/').last.to_i
       next unless id.positive?
 
       sizes = Dir["#{id_dir}/*/"].map { |d| d.split('/').last }.select { |d| d.match(/^\d+x\d+$/) }
       files = Dir["#{id_dir}/#{IMAGES_MASK}"].map { |d| d.split('/').last }
-      files.each do |file|
-        images << {
+      acc += files.inject([]) do |acc, file|
+        acc << {
           resource: resource,
           resource_id: id,
           sizes: sizes.select { |size| File.file? "#{id_dir}/#{size}/#{file}" },
@@ -59,6 +58,7 @@ get '/images' do
       end
     end
   end
+  logger.info images
   json(images.sort_by { |image| image[:image_path] })
 end
 
