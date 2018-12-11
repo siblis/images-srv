@@ -1,15 +1,25 @@
 # /etc/nginx/conf.d/images-srv.conf
 # nginx conf file
 upstream images-srv {
-  server unix:///var/www/images-srv/tmp/puma.socket;
+  server unix:///var/www/images-srv/tmp/puma.socket fail_timeout=0;
 }
 
 server {
   server_name srv.rent-auto.biz.tm; # change to match your URL
 
+  # replace this with your static Sinatra app files, root + public
+  # root /path/to/app/public;
+
   access_log /var/log/nginx/images-srv.access.log;
   error_log /var/log/nginx/images-srv.error.log info;
 
+  # shares static files
+  # location / {
+  #   try_files $uri @app;
+  # }
+
+  # location @app {
+  # w/o share static files
   location / {
     # an HTTP header important enough to have its own Wikipedia entry:
     #   http://en.wikipedia.org/wiki/X-Forwarded-For
