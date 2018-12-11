@@ -30,3 +30,8 @@ gem 'faraday'
 
 # Manipulate images with minimal use of memory via ImageMagick / GraphicsMagick
 gem 'mini_magick'
+
+group :development, :test do
+  gem 'rack-test'
+  gem 'rspec'
+end

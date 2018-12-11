@@ -16,7 +16,7 @@ IMAGES_MASK = '*.{bmp,gif,jpeg,jpg,png,tif,tiff}'
 IMAGES_REGEX = /.(bmp|gif|jpeg|jpg|png|tif|tiff)$/.freeze
 IMAGES_FORMAT = 'jpeg'
 
-# надеюсь меня за это не побьют палками, но ничего лучше не придумал :)
+# ничего лучше не придумал :)
 class AppError < StandardError
   attr_reader :status
 
@@ -28,7 +28,7 @@ end
 
 # проверка аутентификации (авторизации)
 before do
-  auth!
+  auth! unless settings.development?
 end
 
 # редикерт на картинки
@@ -38,18 +38,18 @@ end
 
 # вывести весь список картинок
 get '/images' do
-  images = Dir["#{settings.images_dir}/*/"].inject([]) do |acc, resource_dir|
-    resource = resource_dir.split('/').last
-    next unless settings.resources.include?(resource)
+  images = Dir["#{settings.images_dir}/*/"].inject([]) do |res_acc, res_dir|
+    resource = res_dir.split('/').last
+    next res_acc unless settings.resources.include?(resource)
 
-    acc += Dir["#{resource_dir}/*/"].inject([]) do |acc, id_dir|
+    res_acc + Dir["#{res_dir}/*/"].inject([]) do |id_acc, id_dir|
       id = id_dir.split('/').last.to_i
-      next unless id.positive?
+      next id_acc unless id.positive?
 
       sizes = Dir["#{id_dir}/*/"].map { |d| d.split('/').last }.select { |d| d.match(/^\d+x\d+$/) }
       files = Dir["#{id_dir}/#{IMAGES_MASK}"].map { |d| d.split('/').last }
-      acc += files.inject([]) do |acc, file|
-        acc << {
+      id_acc + files.inject([]) do |size_acc, file|
+        size_acc << {
           resource: resource,
           resource_id: id,
           sizes: sizes.select { |size| File.file? "#{id_dir}/#{size}/#{file}" },
@@ -58,14 +58,13 @@ get '/images' do
       end
     end
   end
-  logger.info images
   json(images.sort_by { |image| image[:image_path] })
 end
 
 # простенькая форма загрузки картинок
 get '/images/:resource/:id' do
   raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(params[:resource]) \
-                                                                && params[:id].positive?
+                                                                && params[:id].to_i.positive?
 
   images_dir = File.join(settings.images_dir, "/#{params[:resource]}/#{params[:id]}")
   images_path = images_dir.gsub(settings.public_dir, '')
@@ -87,32 +86,34 @@ post '/images/:resource/:id/upload' do
 
   image = MiniMagick::Image.open(tempfile.path)
 
-  # raises exception: MiniMagick::Invalid
+  # raises exception MiniMagick::Invalid
   image.validate!
 
-  # convert & save with original size
+  # crops
+  if params[:offsets]
+    offsets = params[:offsets].scan(/[+-]\d+[+-]\d+/)
+    offsets.each { |offset| image.crop offset }
+  end
+  # convert & save
   image.format IMAGES_FORMAT
   image.strip
   image.write target_file
 
   settings.images_sizes.split(',').each do |image_size|
-    image = MiniMagick::Image.open(tempfile.path) # reload original image
+    image = MiniMagick::Image.open(target_file.path) # should reload source image (cropped)
 
     processed_dir = File.join(target_dir, "/#{image_size}")
     processed_file = File.join(processed_dir, "/#{filename}")
     FileUtils.mkdir_p(processed_dir) unless File.exist?(processed_dir)
 
-    # crop
-    offsets = params[:offsets].scan(/[+-]\d+[+-]\d+/) if params[:offsets]
-    offsets.each { |offset| image.crop offset }
-    # resize
+    # resize to fill
     image.combine_options do |opt|
       opt.resize "#{image_size}^"
       opt.gravity 'center'
       opt.extent image_size
     end
+    # image.format IMAGES_FORMAT
     # save
-    image.format IMAGES_FORMAT
     image.strip
     image.write processed_file
   end
@@ -139,15 +140,15 @@ end
 def auth!
   email = request.env['HTTP_X_USER_EMAIL']
   token = request.env['HTTP_X_USER_TOKEN']
-  result = if email && token
-             Faraday.get do |req|
-               req.url "#{settings.back_host}/auth/check"
-               req.headers['Content-Type'] = 'application/json'
-               req.headers['X-USER-EMAIL'] = email
-               req.headers['X-USER-TOKEN'] = token
-             end
-           end
-  logger.info "result: #{result}"
+  raise AppError.new :unauthorized, 'Неверные данные авторизации!' unless email && token
+
+  result = Faraday.get do |req|
+    req.url "#{settings.back_host}/auth/check"
+    req.headers['Content-Type'] = 'application/json'
+    req.headers['X-USER-EMAIL'] = email
+    req.headers['X-USER-TOKEN'] = token
+  end
+  # logger.info "result: #{result}"
   raise AppError.new :unauthorized, 'Недействительный токен и/или отсутствуют права доступа!' unless result&.success?
 
   # && user[:role] == 'admin'
