@@ -9,7 +9,7 @@ configure do
   disable :sessions
 
   disable :show_exceptions
-  disable :dump_errors if settings.production? 
+  disable :dump_errors if settings.production?
 
   # run on puma
   set :server, :puma
