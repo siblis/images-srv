@@ -48,8 +48,8 @@ get '/images' do
 
       sizes = Dir["#{id_dir}/*/"].map { |d| d.split('/').last }.select { |d| d.match(/^\d+x\d+$/) }
       files = Dir["#{id_dir}/#{IMAGES_MASK}"].map { |d| d.split('/').last }
-      id_acc + files.inject([]) do |size_acc, file|
-        size_acc << {
+      id_acc + files.map do |file|
+        {
           resource: resource,
           resource_id: id,
           sizes: sizes.select { |size| File.file? "#{id_dir}/#{size}/#{file}" },
@@ -76,7 +76,7 @@ end
 post '/images/:resource/:id/upload' do
   raise AppError.new :unprocessable_entity, 'Файл не выбран!' unless params[:file]
 
-  tempfile = params[:file][:tempfile]
+  tempfile = params[:file][:tempfile].path
   filename = params[:file][:filename].gsub(IMAGES_REGEX, ".#{IMAGES_FORMAT}")
   raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(params[:resource])
 
@@ -84,7 +84,7 @@ post '/images/:resource/:id/upload' do
   FileUtils.mkdir_p(target_dir) unless File.exist?(target_dir)
   target_file = File.join(target_dir, "/#{filename}")
 
-  image = MiniMagick::Image.open(tempfile.path)
+  image = MiniMagick::Image.open(tempfile)
 
   # raises exception MiniMagick::Invalid
   image.validate!
@@ -100,7 +100,7 @@ post '/images/:resource/:id/upload' do
   image.write target_file
 
   settings.images_sizes.split(',').each do |image_size|
-    image = MiniMagick::Image.open(target_file.path) # should reload source image (cropped)
+    image = MiniMagick::Image.open(target_file) # should reload source image (cropped)
 
     processed_dir = File.join(target_dir, "/#{image_size}")
     processed_file = File.join(processed_dir, "/#{filename}")
@@ -148,10 +148,11 @@ def auth!
     req.headers['X-USER-EMAIL'] = email
     req.headers['X-USER-TOKEN'] = token
   end
-  # logger.info "result: #{result}"
-  raise AppError.new :unauthorized, 'Недействительный токен и/или отсутствуют права доступа!' unless result&.success?
+  raise AppError.new :unauthorized, 'Недействительный токен!' unless result&.success?
 
-  # && user[:role] == 'admin'
+  user = JSON.parse(result.body, symbolize_names: true)[:user]
+  raise AppError.new :unauthorized, 'Отсутствуют права доступа!' unless user && user[:role] == 'admin'
+
   result.status
 rescue Faraday::ConnectionFailed
   raise AppError.new :service_unavailable, 'Ошибка соединения с сервером авторизации!'
