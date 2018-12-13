@@ -80,8 +80,7 @@ get '/images/:resource/:id' do
                                                                 && id.positive?
 
   images_dir = File.join(settings.images_dir, "/#{resource}/#{id}")
-  accepts = request.env['HTTP_ACCEPT'].split(/\s*,\s*/)
-  if accepts.any? { |accept| accept =~ %r{/json} }
+  if request.xhr? || request.env['HTTP_ACCEPT'].scan('application/json').any?
     # вывести в json формате
     sizes = Dir["#{images_dir}/*/"].map { |d| d.split('/').last }.select { |d| d.match(/^\d+x\d+$/) }
     files = Dir["#{images_dir}/#{IMAGES_MASK}"].map { |d| d.split('/').last }
