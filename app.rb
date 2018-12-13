@@ -29,15 +29,15 @@ end
 # проверка аутентификации (авторизации)
 before do
   # без origin никак, нужна настройка
-  response.headers["Access-Control-Allow-Origin"] = '*'
+  response.headers['Access-Control-Allow-Origin'] = '*'
 
   auth! unless settings.development?
 end
 
 # обработка метода OPTIONS
 options '/*' do
-  response.headers["Access-Control-Allow-Methods"] = "OPTIONS,GET,HEAD,POST"
-  response.headers["Access-Control-Allow-Headers"] = "X-USER-EMAIL,X-USER-TOKEN,Accept"
+  response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,HEAD,POST'
+  response.headers['Access-Control-Allow-Headers'] = 'X-USER-EMAIL,X-USER-TOKEN,Accept'
 
   status :ok
 end
@@ -49,7 +49,6 @@ end
 
 # вывести весь список картинок
 get '/images' do
-  logger.info request.env.inspect
   images = Dir["#{settings.images_dir}/*/"].inject([]) do |res_acc, res_dir|
     resource = res_dir.split('/').last
     next res_acc unless settings.resources.include?(resource)
@@ -75,14 +74,14 @@ end
 
 # список картинок/форма загрузки для resource/id
 get '/images/:resource/:id' do
-  logger.info request.env.inspect
-  resource, id = params[:resource], params[:id].to_i
+  resource = params[:resource]
+  id = params[:id].to_i
   raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(resource) \
                                                                 && id.positive?
 
   images_dir = File.join(settings.images_dir, "/#{resource}/#{id}")
   accepts = request.env['HTTP_ACCEPT'].split(/\s*,\s*/)
-  if accepts.any? { |accept| accept =~ /\/json/ }
+  if accepts.any? { |accept| accept =~ %r{/json} }
     # вывести в json формате
     sizes = Dir["#{images_dir}/*/"].map { |d| d.split('/').last }.select { |d| d.match(/^\d+x\d+$/) }
     files = Dir["#{images_dir}/#{IMAGES_MASK}"].map { |d| d.split('/').last }
@@ -162,7 +161,6 @@ not_found do
 end
 
 error do |error|
-  logger.info error.inspect
   status error.status if error.respond_to? :status
   json error: { message: error.message }
 end
