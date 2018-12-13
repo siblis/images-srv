@@ -28,7 +28,18 @@ end
 
 # проверка аутентификации (авторизации)
 before do
+  # без origin никак, нужна настройка
+  response.headers['Access-Control-Allow-Origin'] = '*'
+
   auth! unless settings.development?
+end
+
+# обработка метода OPTIONS
+options '/*' do
+  response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,HEAD,POST'
+  response.headers['Access-Control-Allow-Headers'] = 'X-USER-EMAIL,X-USER-TOKEN,Accept'
+
+  status :ok
 end
 
 # редикерт на картинки
@@ -53,23 +64,42 @@ get '/images' do
           resource: resource,
           resource_id: id,
           sizes: sizes.select { |size| File.file? "#{id_dir}/#{size}/#{file}" },
-          image_path: "#{settings.images_sub}/#{resource}/#{id}/#{file}"
+          path: "#{settings.images_sub}/#{resource}/#{id}/#{file}"
         }
       end
     end
   end
-  json(images.sort_by { |image| image[:image_path] })
+  json(images: images.sort_by { |image| image[:path] })
 end
 
-# простенькая форма загрузки картинок
+# список картинок/форма загрузки для resource/id
 get '/images/:resource/:id' do
-  raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(params[:resource]) \
-                                                                && params[:id].to_i.positive?
+  resource = params[:resource]
+  id = params[:id].to_i
+  raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(resource) \
+                                                                && id.positive?
 
-  images_dir = File.join(settings.images_dir, "/#{params[:resource]}/#{params[:id]}")
-  images_path = images_dir.gsub(settings.public_dir, '')
-  images = Dir["#{images_dir}/**/#{IMAGES_MASK}"].map { |f| f.gsub("#{images_dir}/", '') }.sort
-  slim :upload, locals: { images_path: images_path, images: images }
+  images_dir = File.join(settings.images_dir, "/#{resource}/#{id}")
+  accepts = request.env['HTTP_ACCEPT'].split(/\s*,\s*/)
+  if accepts.any? { |accept| accept =~ %r{/json} }
+    # вывести в json формате
+    sizes = Dir["#{images_dir}/*/"].map { |d| d.split('/').last }.select { |d| d.match(/^\d+x\d+$/) }
+    files = Dir["#{images_dir}/#{IMAGES_MASK}"].map { |d| d.split('/').last }
+    images = files.map do |file|
+      {
+        resource: resource,
+        resource_id: id,
+        sizes: sizes.select { |size| File.file? "#{images_dir}/#{size}/#{file}" },
+        path: "#{settings.images_sub}/#{resource}/#{id}/#{file}"
+      }
+    end
+    json(images: images.sort_by { |image| image[:path] })
+  else
+    # вывести в html
+    images_path = images_dir.gsub(settings.public_dir, '')
+    images = Dir["#{images_dir}/**/#{IMAGES_MASK}"].map { |f| f.gsub("#{images_dir}/", '') }.sort
+    slim :upload, locals: { images_path: images_path, images: images }
+  end
 end
 
 # обработка загрузки
@@ -131,7 +161,6 @@ not_found do
 end
 
 error do |error|
-  logger.info error.inspect
   status error.status if error.respond_to? :status
   json error: { message: error.message }
 end
@@ -144,14 +173,14 @@ def auth!
 
   result = Faraday.get do |req|
     req.url "#{settings.back_host}/auth/check"
-    req.headers['Content-Type'] = 'application/json'
+    req.headers['Accept'] = 'application/json'
     req.headers['X-USER-EMAIL'] = email
     req.headers['X-USER-TOKEN'] = token
   end
   raise AppError.new :unauthorized, 'Недействительный токен!' unless result&.success?
 
-  user = JSON.parse(result.body, symbolize_names: true)[:user]
-  raise AppError.new :unauthorized, 'Отсутствуют права доступа!' unless user && user[:role] == 'admin'
+  # user = JSON.parse(result.body, symbolize_names: true)[:user]
+  # raise AppError.new :unauthorized, 'Отсутствуют права доступа!' unless user && user[:role] == 'admin'
 
   result.status
 rescue Faraday::ConnectionFailed
