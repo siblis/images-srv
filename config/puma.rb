@@ -7,7 +7,7 @@ app_dir = Dir.getwd.to_s
 run_as_daemon = ENV.fetch('DAEMON') { false }
 
 # Specifies the `environment` that Puma will run in.
-environment ENV.fetch('APP_ENV') { 'development' }
+environment ENV.fetch('RACK_ENV') { 'development' }
 
 # Logging
 stdout_redirect "#{app_dir}/log/puma.stdout.log", "#{app_dir}/log/puma.stderr.log", true if run_as_daemon

@@ -26,18 +26,18 @@ class AppError < StandardError
   end
 end
 
-# проверка аутентификации (авторизации)
 before do
   # без origin никак, нужна настройка
   response.headers['Access-Control-Allow-Origin'] = '*'
 
-  auth! unless settings.development?
+  # проверка аутентификации (авторизации)
+  auth! unless request.request_method == 'OPTIONS' || settings.development?
 end
 
 # обработка метода OPTIONS
 options '/*' do
-  response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,HEAD,POST'
-  response.headers['Access-Control-Allow-Headers'] = 'X-USER-EMAIL,X-USER-TOKEN,Accept'
+  response.headers['Access-Control-Allow-Methods'] = 'OPTIONS,GET,POST,DELETE'
+  response.headers['Access-Control-Allow-Headers'] = 'X-USER-EMAIL,X-USER-TOKEN,X-Requested-With,Accept'
 
   status :ok
 end
@@ -63,8 +63,9 @@ get '/images' do
         {
           resource: resource,
           resource_id: id,
-          sizes: sizes.select { |size| File.file? "#{id_dir}/#{size}/#{file}" },
-          path: "#{settings.images_sub}/#{resource}/#{id}/#{file}"
+          path: "#{settings.images_sub}/#{resource}/#{id}",
+          filename: file,
+          sizes: sizes.select { |size| File.file? "#{id_dir}/#{size}/#{file}" }
         }
       end
     end
@@ -72,44 +73,52 @@ get '/images' do
   json(images: images.sort_by { |image| image[:path] })
 end
 
-# список картинок/форма загрузки для resource/id
+# список картинок/форма загрузки для сущности resource/id
 get '/images/:resource/:id' do
   resource = params[:resource]
   id = params[:id].to_i
-  raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(resource) \
-                                                                && id.positive?
+  raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(resource) && id.positive?
 
+  images_path = request.path_info
   images_dir = File.join(settings.images_dir, "/#{resource}/#{id}")
-  if request.xhr? || request.env['HTTP_ACCEPT'].scan('application/json').any?
+
+  sizes = Dir["#{images_dir}/*/"].map { |d| d.split('/').last }.select { |d| d.match(/^\d+x\d+$/) }
+  files = Dir["#{images_dir}/#{IMAGES_MASK}"].map { |d| d.split('/').last }
+
+  images = files.map do |file|
+    {
+      resource: resource,
+      resource_id: id,
+      path: images_path,
+      filename: file,
+      sizes: sizes.select { |size| File.file? "#{images_dir}/#{size}/#{file}" }
+    }
+  end
+  # logger.info request.preferred_type.inspect
+  # стандартный (для многих JS-фреймворков) ajax-запрос или заголовок accept пуст или предпочтение application/json
+  if request.xhr? || request.accept.empty? || request.preferred_type.include?('application/json')
     # вывести в json формате
-    sizes = Dir["#{images_dir}/*/"].map { |d| d.split('/').last }.select { |d| d.match(/^\d+x\d+$/) }
-    files = Dir["#{images_dir}/#{IMAGES_MASK}"].map { |d| d.split('/').last }
-    images = files.map do |file|
-      {
-        resource: resource,
-        resource_id: id,
-        sizes: sizes.select { |size| File.file? "#{images_dir}/#{size}/#{file}" },
-        path: "#{settings.images_sub}/#{resource}/#{id}/#{file}"
-      }
-    end
     json(images: images.sort_by { |image| image[:path] })
   else
     # вывести в html
     images_path = images_dir.gsub(settings.public_dir, '')
-    images = Dir["#{images_dir}/**/#{IMAGES_MASK}"].map { |f| f.gsub("#{images_dir}/", '') }.sort
+    # images = Dir["#{images_dir}/**/#{IMAGES_MASK}"].map { |f| f.gsub("#{images_dir}/", '') }.sort
     slim :upload, locals: { images_path: images_path, images: images }
   end
 end
 
-# обработка загрузки
-post '/images/:resource/:id/upload' do
+# обработка запроса загрузки кратинки
+post '/images/:resource/:id' do
+  resource = params[:resource]
+  id = params[:id].to_i
+  raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(resource) && id.positive?
+
   raise AppError.new :unprocessable_entity, 'Файл не выбран!' unless params[:file]
 
   tempfile = params[:file][:tempfile].path
   filename = params[:file][:filename].gsub(IMAGES_REGEX, ".#{IMAGES_FORMAT}")
-  raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(params[:resource])
 
-  target_dir = File.join(settings.images_dir, "/#{params[:resource]}/#{params[:id]}")
+  target_dir = File.join(settings.images_dir, "/#{resource}/#{id}")
   FileUtils.mkdir_p(target_dir) unless File.exist?(target_dir)
   target_file = File.join(target_dir, "/#{filename}")
 
@@ -147,13 +156,50 @@ post '/images/:resource/:id/upload' do
     image.write processed_file
   end
 
-  json message: 'Готово!'
+  json message: 'Картинка успешно загружена!'
 rescue MiniMagick::Invalid
   raise AppError.new :unprocessable_entity, 'Неизвестный формат файла!'
 rescue Errno::EACCES
   raise AppError.new :service_unavailable, 'Ошибка доступа к хранилищу!'
 end
 
+# обработка запроса удаления всех кратинок ресурса
+delete '/images/:resource/:id' do
+  resource = params[:resource]
+  id = params[:id].to_i
+  raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(resource) && id.positive?
+
+  images_dir = File.join(settings.images_dir, "/#{resource}/#{id}")
+  FileUtils.remove_dir(images_dir)
+
+  json message: 'Все картинки успешно удалены!'
+rescue Errno::ENOENT
+  raise AppError.new :not_found, 'Картинки не найдены!'
+rescue Errno::EACCES, Errno::ENOTEMPTY
+  raise AppError.new :service_unavailable, 'Ошибка доступа к хранилищу!'
+end
+
+# обработка запроса удаления выбранной кратинки ресурса
+delete '/images/:resource/:id/:filename' do
+  resource = params[:resource]
+  id = params[:id].to_i
+  raise AppError.new :not_acceptable, 'Неверный ресурс!' unless settings.resources.include?(resource) && id.positive?
+
+  filename = params[:filename]
+  images_dir = File.join(settings.images_dir, "/#{resource}/#{id}")
+
+  # удалить оригинал и все размеры
+  files = Dir["#{images_dir}/**/#{filename}"].select { |file| File.file? file }
+  raise AppError.new :not_found, 'Картинка не найдена!' if files.nil? || files.empty?
+
+  files.each { |file| FileUtils.remove_file(file) }
+
+  json message: 'Картинка успешно удалена!'
+rescue Errno::EACCES
+  raise AppError.new :service_unavailable, 'Ошибка доступа к хранилищу!'
+end
+
+# обработка ошибок
 not_found do
   status :not_found
   json error: { message: 'Неверный запрос!' }
@@ -164,6 +210,8 @@ error do |error|
   json error: { message: error.message }
 end
 
+private
+
 # проверить токен на главном бэкенде
 def auth!
   email = request.env['HTTP_X_USER_EMAIL']
@@ -171,15 +219,15 @@ def auth!
   raise AppError.new :unauthorized, 'Неверные данные авторизации!' unless email && token
 
   result = Faraday.get do |req|
-    req.url "#{settings.back_host}/auth/check"
+    req.url "#{settings.back_host}/auth/check_in"
     req.headers['Accept'] = 'application/json'
     req.headers['X-USER-EMAIL'] = email
     req.headers['X-USER-TOKEN'] = token
   end
   raise AppError.new :unauthorized, 'Недействительный токен!' unless result&.success?
 
-  # user = JSON.parse(result.body, symbolize_names: true)[:user]
-  # raise AppError.new :unauthorized, 'Отсутствуют права доступа!' unless user && user[:role] == 'admin'
+  user = JSON.parse(result.body, symbolize_names: true)[:user]
+  raise AppError.new :unauthorized, 'Отсутствуют права доступа!' unless user && user[:role] == 'admin'
 
   result.status
 rescue Faraday::ConnectionFailed
