@@ -1,5 +1,5 @@
 h1 Загрузка картинок:
-form action="#{images_path}/upload" method='post' enctype='multipart/form-data'
+form action="#{images_path}" method='post' enctype='multipart/form-data'
   p
     label
       strong Картинка: 
@@ -27,7 +27,21 @@ form action="#{images_path}/upload" method='post' enctype='multipart/form-data'
     input type='submit' value='Загрузить'
 
 h3 Загруженные картинки:
-ul
-  - images.each do |img|
-    li
-      a href="#{images_path}/#{img}" #{img}
+table
+  - images.each do |image|
+    tr
+      td
+        form action="#{image[:path]}/#{image[:filename]}" method='post'
+          input type='hidden' name='_method' value='delete'
+          input type='submit' value='x'
+      td
+        a href="#{image[:path]}/#{image[:filename]}" #{image[:filename]}
+        |  
+      - image[:sizes].each do |size|
+        td
+          a href="#{image[:path]}/#{size}/#{image[:filename]}" #{size}
+          |  
+p
+  form action="#{images_path}" method='post'
+    input type='hidden' name='_method' value='delete'
+    input type='submit' value='Удалить все!'
